@@ -43,7 +43,7 @@
 * Data 0 = LOW-HIGH-HIGH-HIGH (wire 0111)
 * Data 1 = LOW-LOW-HIGH-HIGH (wire 0011)
 * 
-* One command is repeated 5 times at first, then the next command in order is repeated 4 + 5 times.
+* First command is repeated 4 times, then the next commands in order are repeated 4 + 4 times.
 *
 * End first 3 repetitions and final 8th repetition with LOW radio silence of 130 samples = 2948 us.
 * 4th, 5th, 6th and 7th repetitions have no radio silence after data bits.
