@@ -1,4 +1,7 @@
 /*
+ Remote capture code downloaded from here:
+ https://www.instructables.com/id/Control-CoTech-Remote-Switch-With-Arduino-433Mhz/
+
  Thanks to wex_storm for contributing this on
  http://forum.arduino.cc/index.php?topic=201771.15
 
