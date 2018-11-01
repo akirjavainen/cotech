@@ -2,7 +2,8 @@
 ******************************************************************************************************************************************************************
 *
 * Clas Ohlson CO Tech power plugs
-* Tested with remote ? and power plug ?
+* Tested with remote 50074 and power plug 52008X36
+* Product code 36-6758
 * 
 * Code by Antti Kirjavainen (antti.kirjavainen [_at_] gmail.com)
 * 
