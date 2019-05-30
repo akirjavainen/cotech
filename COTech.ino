@@ -32,21 +32,21 @@
 * All sample counts below listed with a sample rate of 44100 Hz (sample count / 44100 = microseconds).
 * 
 * First 4 command repetitions have an AGC bit of:
-* HIGH of approx. 328 samples = 7437 us
+* LOW of approx. 328 samples = 7437 us
 * 
 * Last 4 repetitions have an AGC bit of (and no radio silence in between):
-* HIGH of 110 approx. samples = 2494 us
+* LOW of 110 approx. samples = 2494 us
 *
 * Pulse length:
-* One data quadrobit: 68 approx. samples = 1542 us
+* One data quadrobit: 69 approx. samples = 1565 us
 *
 * Data bits:
-* Data 0 = LOW-HIGH-HIGH-HIGH (wire 0111)
-* Data 1 = LOW-LOW-HIGH-HIGH (wire 0011)
+* Data 0 = HIGH-LOW-LOW-LOW (wire 1000)
+* Data 1 = HIGH-HIGH-HIGH-LOW (wire 1110)
 * 
-* First command is repeated 4 times, then the next commands in order are repeated 4 + 4 times.
+* First command is repeated 4 times, the next commands in order are repeated 4 + 4 times.
 *
-* End first 3 repetitions and final 8th repetition with LOW radio silence of 130 samples = 2948 us.
+* End first 3 repetitions and final 8th repetition with HIGH radio silence of 136 samples = 3084 us.
 * 4th, 5th, 6th and 7th repetitions have no radio silence after data bits.
 * 
 ******************************************************************************************************************************************************************
@@ -73,6 +73,7 @@ const String SWITCH_D_OFF[4] = {"111001110100110111110111", "1110011010100110110
 
 
 #define TRANSMIT_PIN          13      // We'll use digital 13 for transmitting
+#define DEBUG                 false   // Do note that if you add serial output during transmit, it will cause delay and commands may fail
 
 // If you wish to use PORTB commands instead of digitalWrite, these are for Arduino Uno digital 13:
 #define D13high | 0x20; 
@@ -83,13 +84,10 @@ const String SWITCH_D_OFF[4] = {"111001110100110111110111", "1110011010100110110
 // Sample counts listed below with a sample rate of 44100 Hz:
 #define COTECH_AGC1_PULSE                   7350  // 328 samples, between first 4 repetitions
 #define COTECH_AGC2_PULSE                   2480  // 110 samples, between last 4 repetitions
-#define COTECH_RADIO_SILENCE                2948  // 130 samples, only between first 3 repetitions and final 9th repetition
+#define COTECH_RADIO_SILENCE                3080  // 136 samples, only between first 3 repetitions and final 9th repetition
 
-#define COTECH_PULSE_TIMES_TWO_LOW          910   // 38 samples, first bit of data 0
-#define COTECH_PULSE_TIMES_TWO_HIGH         645   // 30 samples, second bit of data 0
-
-#define COTECH_PULSE_SHORT                  400   // 17 samples, first bit of data 1
-#define COTECH_PULSE_TIMES_THREE            1125  // 51 samples, second bit of data 1
+#define COTECH_PULSE_SHORT                  470   // 21 samples
+#define COTECH_PULSE_LONG                   1080  // 48 samples
 
 #define COTECH_COMMAND_BIT_ARRAY_SIZE       24    // Command bit count
 
@@ -98,6 +96,8 @@ const String SWITCH_D_OFF[4] = {"111001110100110111110111", "1110011010100110110
 // ----------------------------------------------------------------------------------------------------------------------------------------------------------------
 void setup() {
   Serial.begin(9600); // Used for error messages even with DEBUG set to false
+
+  if (DEBUG) Serial.println("Starting up...");
 }
 // ----------------------------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -123,7 +123,7 @@ void sendCOTechCommand(String *command_list) {
 
   // Prepare for transmitting and check for validity
   pinMode(TRANSMIT_PIN, OUTPUT); // Prepare the digital pin for output
-  transmitWaveformLow(1);
+  transmitHigh(1);
 
   // CO Tech switches need at least 2 of the 4 different codes for each command:
   for (int c = 0; c < 4; c++) {
@@ -142,19 +142,19 @@ void sendCOTechCommand(String *command_list) {
     
     // First 3 repetitions, long AGC and full radio silence:
     for (int i = 0; i < 3; i++) {
-      doCotechQuadrobitSend(command_array1, COTECH_COMMAND_BIT_ARRAY_SIZE, COTECH_AGC1_PULSE, COTECH_RADIO_SILENCE);
+      doCotechQuadrobitSend(command_array1, COTECH_AGC1_PULSE, COTECH_RADIO_SILENCE);
     }
 
     // 4th repetition, same AGC but only very short radio silence at the end (same as the short pulse):
-    doCotechQuadrobitSend(command_array1, COTECH_COMMAND_BIT_ARRAY_SIZE, COTECH_AGC1_PULSE, COTECH_PULSE_SHORT);
+    doCotechQuadrobitSend(command_array1, COTECH_AGC1_PULSE, COTECH_PULSE_SHORT);
 
     // Last 4 repetitions, next command, short AGC and short pulse radio silence at the end:
     for (int i = 0; i < 4; i++) {
-        doCotechQuadrobitSend(command_array2, COTECH_COMMAND_BIT_ARRAY_SIZE, COTECH_AGC2_PULSE, COTECH_PULSE_SHORT);
+        doCotechQuadrobitSend(command_array2, COTECH_AGC2_PULSE, COTECH_PULSE_SHORT);
     }
 
     // Radio silence in between:
-    transmitWaveformLow(COTECH_RADIO_SILENCE - COTECH_PULSE_SHORT);
+    transmitHigh(COTECH_RADIO_SILENCE - COTECH_PULSE_SHORT);
 
     // Disable output to transmitter to prevent interference with
     // other devices. Otherwise the transmitter will keep on transmitting,
@@ -165,50 +165,45 @@ void sendCOTechCommand(String *command_list) {
 // ----------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 // ----------------------------------------------------------------------------------------------------------------------------------------------------------------
-void doCotechQuadrobitSend(int *command_array, int command_array_size, int pulse_agc, int pulse_radio_silence) {
-
-  if (command_array == NULL) {
-    errorLog("doCotechQuadrobitSend(): Array pointer was NULL, cannot continue.");
-    return;
-  }
+void doCotechQuadrobitSend(int *command_array, int pulse_agc, int radio_silence) {
 
   // Starting (AGC) bit:
-  transmitWaveformHigh(pulse_agc);
+  transmitLow(pulse_agc);
  
   // Transmit command:
-  for (int i = 0; i < command_array_size; i++) {
+  for (int i = 0; i < COTECH_COMMAND_BIT_ARRAY_SIZE; i++) {
 
-      // If current bit is 0, transmit LOW-HIGH-HIGH-HIGH (0111):
+      // If current bit is 0, transmit HIGH-LOW-LOW-LOW (1000):
       if (command_array[i] == 0) {
-        transmitWaveformLow(COTECH_PULSE_SHORT);
-        transmitWaveformHigh(COTECH_PULSE_TIMES_THREE);
+        transmitHigh(COTECH_PULSE_SHORT);
+        transmitLow(COTECH_PULSE_LONG);
       }
          
-      // If current bit is 1, transmit LOW-LOW-HIGH-HIGH (0011):
+      // If current bit is 1, transmit HIGH-HIGH-HIGH-LOW (1110):
       if (command_array[i] == 1) {
-        transmitWaveformLow(COTECH_PULSE_TIMES_TWO_LOW);
-        transmitWaveformHigh(COTECH_PULSE_TIMES_TWO_HIGH);
+        transmitHigh(COTECH_PULSE_LONG);
+        transmitLow(COTECH_PULSE_SHORT);
       }
    }
 
   // Radio silence at the end of command.
   // It's better to rather go a bit over than under required length.
-  transmitWaveformLow(pulse_radio_silence);
+  transmitHigh(radio_silence);
 }
 // ----------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 // ----------------------------------------------------------------------------------------------------------------------------------------------------------------
-void transmitWaveformHigh(int delay_microseconds) {
-  digitalWrite(TRANSMIT_PIN, LOW); // Digital pin low transmits a high waveform
-  //PORTB = PORTB D13low; // If you wish to use faster PORTB commands instead
+void transmitHigh(int delay_microseconds) {
+  digitalWrite(TRANSMIT_PIN, HIGH);
+  //PORTB = PORTB D13high; // If you wish to use faster PORTB calls instead
   delayMicroseconds(delay_microseconds);
 }
 // ----------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 // ----------------------------------------------------------------------------------------------------------------------------------------------------------------
-void transmitWaveformLow(int delay_microseconds) {
-  digitalWrite(TRANSMIT_PIN, HIGH); // Digital pin high transmits a low waveform
-  //PORTB = PORTB D13high; // If you wish to use faster PORTB commands instead
+void transmitLow(int delay_microseconds) {
+  digitalWrite(TRANSMIT_PIN, LOW);
+  //PORTB = PORTB D13low; // If you wish to use faster PORTB calls instead
   delayMicroseconds(delay_microseconds);
 }
 // ----------------------------------------------------------------------------------------------------------------------------------------------------------------
