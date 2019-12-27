@@ -150,3 +150,4 @@ static char * code2bin(unsigned long code, unsigned int bitLength)
   return bin;
 }
 
+
